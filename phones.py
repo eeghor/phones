@@ -4,15 +4,17 @@ from collections import defaultdict
 from string import ascii_uppercase
 import json
 import os
+import arrow
 
 class WikiPhone:
 
-	def __init__(self):
+	def __init__(self, manufacturers):
 
+		self.manufacturers = manufacturers
 		self.model_urls = defaultdict()
 		self.model_info = []
 
-	def _explore_category(self, manufacturer):
+	def explore_categories(self):
 		"""
 		find a category page by the mobile phone manufacturer name; it's expected to be something like 
 		https://en.wikipedia.org/wiki/Category:Samsung_mobile_phones
@@ -27,26 +29,30 @@ class WikiPhone:
 
 			return (par['class'][0] == 'mw-category-group')
 
-		url = f'https://en.wikipedia.org/wiki/Category:{manufacturer.title()}_mobile_phones'
+		for manuf in self.manufacturers:
 
-		while True:
+			print(f'collecting {manuf.upper()} phone urls..')
 
-			r = requests.get(url).text
-			soup = BeautifulSoup(r, "lxml")
+			url = f'https://en.wikipedia.org/wiki/Category:{manuf.title()}_mobile_phones'
 
-			for p in soup.find_all(__has_type_and_class):
+			while True:
 
-				for _ in p.parent.find_all('a'):
-						self.model_urls[_['title']] = 'https://en.wikipedia.org' + _['href']
+				r = requests.get(url).text
+				soup = BeautifulSoup(r, "lxml")
 
-			# try to find a link to the next page; if no such link can be found, next_page_ will be None
-			next_page_ = soup.find('a', text='next page')
+				for p in soup.find_all(__has_type_and_class):
 
-			if next_page_:
-				url = 'https://en.wikipedia.org' + next_page_['href']
-			else:
-				print('no more pages')
-				break
+					for _ in p.parent.find_all('a'):
+							self.model_urls[_['title']] = 'https://en.wikipedia.org' + _['href']
+
+				# try to find a link to the next page; if no such link can be found, next_page_ will be None
+				next_page_ = soup.find('a', text='next page')
+
+				if next_page_:
+					url = 'https://en.wikipedia.org' + next_page_['href']
+				else:
+					print('no more pages')
+					break
 
 		print(f'found {len(self.model_urls)} model urls..')
 
@@ -58,13 +64,16 @@ class WikiPhone:
 		r = requests.get(url).text
 		soup = BeautifulSoup(r, "lxml")
 
+		inf_ = defaultdict()
+
 		infobox = soup.find('table', class_='infobox')
 
 		if not infobox:
-			print('no infobox')
 			return None
 
-		inf_ = defaultdict()
+		capt_ = infobox.find('caption')
+
+		inf_['phone_name'] = capt_.text.lower().strip() if capt_ else None
 
 		for row in infobox.find_all('tr'):
 
@@ -92,14 +101,14 @@ class WikiPhone:
 		if not os.path.exists('data'):
 			os.mkdir('data')
 
-		json.dump(self.model_info, open('data/phone_info.json', 'w'))
+		json.dump(self.model_info, open(f'data/phones_{arrow.utcnow().to("local").format("YYYYMMDD")}.json', 'w'))
 
 		return self
 
 
 if __name__ == '__main__':
 
-	wp = WikiPhone() \
-		._explore_category('samsung') \
+	wp = WikiPhone('Samsung Huawei HTC OnePlus LG_Electronics Sony Asus'.split()) \
+		.explore_categories() \
 		.get_details() \
 		.save()
