@@ -6,13 +6,26 @@ import json
 import os
 import arrow
 
+from selenium import webdriver
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
+from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.common.keys import Keys
+
+import time
+
 class WikiPhone:
 
-	def __init__(self, manufacturers):
+	def __init__(self):
 
-		self.manufacturers = manufacturers
+		self.manufacturers = {'samsung': 'Samsung', 'huawei': 'Huawei', 'htc': 'HTC', 
+								'oneplus': 'OnePlus','lg': 'LG_Electronics',
+									'sony': 'Sony', 'asus': 'Asus'}
+
 		self.model_urls = defaultdict()
 		self.model_info = []
+		self.model_prices = []
 
 	def explore_categories(self):
 		"""
@@ -33,7 +46,7 @@ class WikiPhone:
 
 			print(f'collecting {manuf.upper()} phone urls..')
 
-			url = f'https://en.wikipedia.org/wiki/Category:{manuf.title()}_mobile_phones'
+			url = f'https://en.wikipedia.org/wiki/Category:{self.manufacturers[manuf]}_mobile_phones'
 
 			while True:
 
@@ -51,7 +64,6 @@ class WikiPhone:
 				if next_page_:
 					url = 'https://en.wikipedia.org' + next_page_['href']
 				else:
-					print('no more pages')
 					break
 
 		print(f'found {len(self.model_urls)} model urls..')
@@ -88,9 +100,16 @@ class WikiPhone:
 	def get_details(self):
 
 		for model in self.model_urls:
+
+			print(f'{model}...', end='')
+
 			_ = self._get_phone_details(self.model_urls[model])
+
 			if _:
 				self.model_info.append(_)
+				print('ok')
+			else:
+				print('failed')
 
 		print(f'collected {len(self.model_info)} model information summaries.')
 
@@ -101,14 +120,73 @@ class WikiPhone:
 		if not os.path.exists('data'):
 			os.mkdir('data')
 
-		json.dump(self.model_info, open(f'data/phones_{arrow.utcnow().to("local").format("YYYYMMDD")}.json', 'w'))
+		if self.model_info:
+			json.dump(self.model_info, open(f'data/phones_{arrow.utcnow().to("local").format("YYYYMMDD")}.json', 'w'))
+
+		if self.model_prices:
+			json.dump(self.model_prices, open(f'data/phone_prices_{arrow.utcnow().to("local").format("YYYYMMDD")}.json', 'w'))
 
 		return self
 
+	def get_price(self):
+		"""
+		get phone names and prices from Mobileciti
+		"""
+		driver = webdriver.Chrome('webdriver/chromedriver')
+
+		for manuf in self.manufacturers:
+
+			print(f'searching for {manuf.upper()} phone prices...')
+
+			url = f'https://mobileciti.com.au/mobile-phones/{manuf}'	
+
+			try:
+				driver.get(url)
+			except:
+				continue
+
+			time.sleep(7)
+
+			driver.execute_script('window.scrollTo(0, document.body.scrollHeight);')
+
+			time.sleep(7)
+
+			for i, prod in enumerate(driver.find_elements_by_class_name('product-item'), 1):
+
+				name_ = price_ = rrp_ = None
+
+				try:
+					name_ = prod.find_element_by_tag_name('h2').text.strip()
+				except:
+					# if no model name it's something dodgy, skip altogether
+					continue
+
+				for cl_name in ['price-discount', 'price']:
+
+					try:
+						price_ = prod.find_element_by_class_name(cl_name).text.strip()
+					except:
+						continue
+
+				for price in ['price-normal', 'price']:
+
+					try:
+						rrp_ = prod.find_element_by_class_name(price).text.strip()
+					except:
+						continue
+
+				if all([name_, price_, rrp_]):
+
+					self.model_prices.append({'name': name_, 'price': price_, 'rrp': rrp_, 'manufacturer': manuf})
+
+		driver.close()
+
+		return self
 
 if __name__ == '__main__':
 
-	wp = WikiPhone('Samsung Huawei HTC OnePlus LG_Electronics Sony Asus'.split()) \
+	wp = WikiPhone() \
 		.explore_categories() \
 		.get_details() \
+		.get_price() \
 		.save()
