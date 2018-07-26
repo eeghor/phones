@@ -21,7 +21,7 @@ class WikiPhone:
 
 		self.manufacturers = {'samsung': 'Samsung', 'huawei': 'Huawei', 'htc': 'HTC', 
 								'oneplus': 'OnePlus','lg': 'LG_Electronics',
-									'sony': 'Sony', 'asus': 'Asus'}
+									'sony': 'Sony', 'asus': 'Asus', 'zte': 'ZTE'}
 
 		self.model_urls = defaultdict()
 		self.model_info = []
